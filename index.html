@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Speech Assessment Application</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .hidden {
+        display: none;
+      }
+
+      .hidden-text {
+        visibility: hidden;
+        position: absolute;
+        left: -9999px;
+      }
+
+      .round-title {
+        margin: 20px 0;
+        color: #2c3e50;
+      }
+
+      .question-container {
+        margin: 20px 0;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .feedback-item {
+        margin: 15px 0;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 6px;
+        border-left: 4px solid #007bff;
+      }
+
+      .login-container {
+        max-width: 400px;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .progress {
+        height: 10px;
+        border-radius: 5px;
+      }
+
+      .progress-bar {
+        background-color: #007bff;
+        transition: width 0.3s ease;
+      }
+
+      #record-button {
+        padding: 10px 20px;
+        font-size: 1.1em;
+      }
+
+      #record-button:disabled {
+        background-color: #6c757d;
+        border-color: #6c757d;
+      }
+
+      .round-info {
+        background-color: #e9ecef;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+      }
+
+      .score-card {
+        background-color: #fff;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .overall-result {
+        text-align: center;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+      }
+
+      .text-success {
+        color: #28a745 !important;
+      }
+
+      .text-danger {
+        color: #dc3545 !important;
+      }
+
+      .round-instructions {
+        font-size: 1.1em;
+        margin: 15px 0;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-left: 4px solid #17a2b8;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Login Page -->
+    <div id="login-page" class="container mt-4">
+      <h1 class="text-center mb-4">Communication Assessment Login</h1>
+      <div class="login-container">
+        <form id="login-form">
+          <div class="mb-3">
+            <label for="username" class="form-label">Username</label>
+            <input
+              type="text"
+              class="form-control"
+              id="username"
+              placeholder="Enter username"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input
+              type="password"
+              class="form-control"
+              id="password"
+              placeholder="Enter password"
+              required
+            />
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Login</button>
+          <div id="login-error" class="mt-3 text-danger hidden">
+            Invalid username or password!
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main Assessment Application -->
+    <div id="practice-app" class="container mt-4 hidden">
+      <h1 class="text-center mb-4">Communication Assessment</h1>
+
+      <!-- Practice Area -->
+      <div id="practice-area">
+        <div class="round-info">
+          <h2 class="round-title">
+            <span id="round-name" class="badge bg-primary"></span>
+            <small class="text-muted"
+              >(Round <span id="current-round">1</span>)</small
+            >
+          </h2>
+          <div class="progress mb-3">
+            <div
+              class="progress-bar"
+              role="progressbar"
+              style="width: 0%"
+            ></div>
+          </div>
+        </div>
+
+        <div class="question-container">
+          <h3 class="mb-3">
+            Question <span id="question-number">1</span> of
+            <span id="total-questions">5</span>
+          </h3>
+          <div id="round-instructions" class="round-instructions"></div>
+          <p id="current-question" class="lead p-3 bg-light rounded"></p>
+
+          <div id="response-area" class="mt-4 text-center">
+            <button id="record-button" class="btn btn-primary btn-lg">
+              🎤 Record Response
+            </button>
+          </div>
+
+          <div id="feedback" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Final Report -->
+      <div id="final-report" class="hidden">
+        <h2 class="text-center mb-4">Assessment Report</h2>
+        <div id="report-content">
+          <div class="overall-result">
+            <div class="alert mb-0">
+              <h3 class="mb-3">
+                Final Score: <span id="total-score"></span>/100
+              </h3>
+              <h4>Status: <span id="pass-fail"></span></h4>
+            </div>
+          </div>
+
+          <div class="round-scores">
+            <!-- Round scores will be inserted here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Round configuration
+      const ROUND_NAMES = {
+        1: {
+          name: "Reading",
+          maxScore: 20,
+          instructions: "Read the text displayed below clearly and naturally.",
+        },
+        2: {
+          name: "Repeating Sentences",
+          maxScore: 20,
+          instructions:
+            "Listen carefully to the sentence and repeat it exactly as you hear it.",
+        },
+        3: {
+          name: "Jumbled Sentence",
+          maxScore: 20,
+          instructions:
+            "Listen to the jumbled sentence and rearrange it into a proper, meaningful sentence.",
+        },
+        4: {
+          name: "Question and Answer",
+          maxScore: 20,
+          instructions:
+            "Listen to the question and provide a complete, appropriate answer.",
+        },
+        5: {
+          name: "Story Telling",
+          maxScore: 40,
+          instructions:
+            "Listen to the story prompt and continue the story in a logical and creative way.",
+        },
+      };
+
+      // Speech recognition setup
+      let recognition;
+      if ("webkitSpeechRecognition" in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+      }
+
+      // Load question function
+      function loadQuestion() {
+        $.get("/current_question", function (data) {
+          if (data.complete) {
+            showFinalReport(data.report);
+            return;
+          }
+
+          const currentRound = data.round;
+
+          $("#current-round").text(currentRound);
+          $("#round-name").text(ROUND_NAMES[currentRound].name);
+          $("#question-number").text(data.question_number);
+          $("#total-questions").text(data.total_questions);
+          $("#round-instructions").text(ROUND_NAMES[currentRound].instructions);
+
+          // Handle question text visibility based on round
+          if (currentRound === 1) {
+            $("#current-question")
+              .removeClass("hidden-text")
+              .text(data.question);
+          } else {
+            $("#current-question").addClass("hidden-text").text(data.question);
+          }
+
+          const progress =
+            ((data.question_number - 1) / data.total_questions) * 100;
+          $(".progress-bar").css("width", progress + "%");
+
+          // Play audio for rounds 2-5
+          if (currentRound > 1) {
+            playAudio(data.question);
+          }
+        });
+      }
+
+      // Submit response function
+      function submitResponse(response, original) {
+        $.ajax({
+          url: "/submit_response",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            response,
+            original,
+          }),
+          success: function (data) {
+            if (data.round_complete) {
+              setTimeout(loadQuestion, 1500);
+            } else {
+              loadQuestion();
+            }
+          },
+        });
+      }
+
+      // Show final report function
+      function showFinalReport(report) {
+        $("#practice-area").addClass("hidden");
+        $("#final-report").removeClass("hidden");
+
+        $("#total-score").text(report.total_score.toFixed(1));
+        const passFailElement = $("#pass-fail");
+
+        if (report.passed) {
+          passFailElement.text("PASSED").addClass("text-success");
+          $(".overall-result .alert").addClass("alert-success");
+        } else {
+          passFailElement.text("FAILED").addClass("text-danger");
+          $(".overall-result .alert").addClass("alert-danger");
+        }
+
+        let roundScoresHTML = "";
+        report.detailed_feedback.forEach((round) => {
+          roundScoresHTML += `
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">${
+                              round.name
+                            } - Score: ${round.score.toFixed(1)}/${
+            round.max_score
+          }</h5>
+                        </div>
+                        <div class="card-body">
+                            ${round.questions
+                              .map(
+                                (question) => `
+                                <div class="feedback-item">
+                                    <div class="hidden-task">
+                                        <p><strong>Task:</strong> ${
+                                          question.original
+                                        }</p>
+                                    </div>
+                                    <p><strong>Your Response:</strong> ${
+                                      question.response
+                                    }</p>
+                                    <div class="row mt-3">
+                                        <div class="col-md-6">
+                                            <h6>Scores:</h6>
+                                            <ul class="list-unstyled">
+                                                <li>Clarity: ${
+                                                  question.scores.clarity
+                                                }/10</li>
+                                                <li>Relevance: ${
+                                                  question.scores.relevance
+                                                }/10</li>
+                                                <li>Grammar: ${
+                                                  question.scores.grammar
+                                                }/10</li>
+                                                <li>Overall: ${question.scores.overall.toFixed(
+                                                  1
+                                                )}</li>
+                                            </ul>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6>Feedback:</h6>
+                                            <p class="mb-2">${
+                                              question.feedback
+                                            }</p>
+                                            <h6>Improvements:</h6>
+                                            <p class="mb-0">${
+                                              question.improvements
+                                            }</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `
+                              )
+                              .join("")}
+                        </div>
+                    </div>
+                `;
+        });
+
+        $(".round-scores").html(roundScoresHTML);
+      }
+
+      // Audio playback function
+      function playAudio(text) {
+        const audio = new Audio(/audio/${encodeURIComponent(text)});
+        audio
+          .play()
+          .catch((error) => console.error("Error playing audio:", error));
+      }
+
+      // Document ready handlers
+      $(document).ready(function () {
+        // Login form handler
+        $("#login-form").submit(function (event) {
+          event.preventDefault();
+
+          const username = $("#username").val();
+          const password = $("#password").val();
+
+          if (username === "user" && password === "password") {
+            $("#login-page").addClass("hidden");
+            $("#practice-app").removeClass("hidden");
+            loadQuestion();
+          } else {
+            $("#login-error").removeClass("hidden");
+          }
+        });
+
+        // Record button handler
+        $("#record-button").click(function () {
+          if (recognition) {
+            $(this).prop("disabled", true).html("🎤 Listening...");
+            recognition.start();
+          } else {
+            alert(
+              "Speech recognition is not supported in your browser. Please use Chrome."
+            );
+          }
+        });
+
+        // Speech recognition handlers
+        if (recognition) {
+          recognition.onresult = function (event) {
+            const response = event.results[0][0].transcript;
+            const original = $("#current-question").text();
+            submitResponse(response, original);
+          };
+
+          recognition.onend = function () {
+            $("#record-button")
+              .prop("disabled", false)
+              .html("🎤 Record Response");
+          };
+
+          recognition.onerror = function (event) {
+            console.error("Speech recognition error:", event.error);
+            $("#record-button")
+              .prop("disabled", false)
+              .html("🎤 Record Response");
+            alert(
+              "There was an error with the speech recognition. Please try again."
+            );
+          };
+        }
+      });
+    </script>
+  </body>
+</html>
