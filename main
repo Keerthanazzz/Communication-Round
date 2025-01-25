@@ -1,0 +1,291 @@
+from flask import Flask, render_template, request, jsonify, Response
+import random
+from io import BytesIO
+import gtts
+from difflib import SequenceMatcher
+import google.generativeai as genai
+import nltk
+import language_tool_python
+import json
+
+app = Flask(_name_)
+
+# Reading practice sentences
+sentences = [
+    "I visited my grandparents last summer.",
+    "She finished her homework yesterday.",
+    "We went to the beach last weekend.",
+    "He cooked dinner for his family.",
+    "They traveled to Paris last year.",
+    "I bought a new book last month.",
+    "She cleaned her room last Saturday.",
+    "We enjoyed a picnic at the park.",
+    "He painted his room blue.",
+    "They played cards all evening.",
+    "I learned to ride a bike as a child.",
+    "She baked cookies for the party.",
+    "We celebrated my birthday last week.",
+    "He listened to music while studying.",
+    "They danced at the wedding.",
+    "I found a dollar on the ground.",
+    "She took a lot of photos during her trip.",
+    "We watched a documentary last night.",
+    "He attended a concert last Friday.",
+    "They visited the museum last month.",
+    "I wrote a letter to my friend.",
+    "She joined a dance class last year.",
+    "We hiked in the mountains last fall.",
+    "He repaired his bicycle last weekend.",
+    "They enjoyed a movie night at home.",
+    "I tried a new restaurant yesterday.",
+    "She organized her closet last Sunday.",
+    "We had a barbecue in the backyard.",
+    "He drew a picture for his sister.",
+    "They played chess at the library.",
+    "I participated in a local run last spring."
+]
+
+# Jumbled sentences
+jumbled_sentences = [
+    "dog the over jumps fox brown quick the",
+    "question the is that be to not or be to",
+    "boy dull a Jack makes play no and work all",
+    "wise and wealthy healthy man a makes rise to early and bed to early",
+    "step single a with begins miles thousand a of journey a"
+]
+
+# Question-answer practice sentences
+interview_questions = [
+    "What is your favorite color and why?",
+    "Describe your ideal vacation destination.",
+    "What are your career goals for the next five years?",
+    "How do you handle stress in your daily life?"
+]
+
+# Story telling prompts
+story_prompts = [
+    "Tell me about a project you're particularly proud of."
+]
+
+# Configure Gemini API
+genai.configure(api_key='AIzaSyCadd13-EHegOxuzgVr_17N-HTTJWvlD-k')
+model = genai.GenerativeModel('gemini-pro')
+
+# Download NLTK resources
+nltk.download('punkt', quiet=True)
+
+# Initialize language tool
+tool = language_tool_python.LanguageTool('en-US')
+
+# Round names and weights
+ROUND_CONFIG = {
+    1: {"name": "Reading", "max_score": 20},
+    2: {"name": "Repeating Sentences", "max_score": 20},
+    3: {"name": "Jumbled Sentence", "max_score": 20},
+    4: {"name": "Question and Answer", "max_score": 20},
+    5: {"name": "Story Telling", "max_score": 40}
+}
+
+class SpeechPractice:
+    def _init_(self):
+        self.current_round = 1
+        self.total_score = 0
+        self.round_results = []
+        self.round_scores = {}
+        self.initialize_round()
+
+    def initialize_round(self):
+        if self.current_round in [1, 2]:
+            self.selected_sentences = random.sample(sentences, 2)
+        elif self.current_round == 3:
+            self.selected_sentences = random.sample(jumbled_sentences, 2)
+        elif self.current_round == 4:
+            self.selected_sentences = random.sample(interview_questions, 2)
+        elif self.current_round == 5:
+            self.selected_sentences = random.sample(story_prompts, 1)
+        
+        self.current_question = 0
+        self.round_results = []
+
+    def normalize_score(self, raw_score, round_number):
+        """Convert raw score (0-10) to round-specific score"""
+        max_score = ROUND_CONFIG[round_number]["max_score"]
+        return (raw_score / 10) * max_score
+
+    def analyze_response(self, user_response, context):
+        prompt = f"""
+        Analyze the following response in the context of {context}.
+        Response: {user_response}
+        
+        Provide a JSON response with:
+        {{
+            "clarity_score": (1-10),
+            "relevance_score": (1-10),
+            "grammar_score": (1-10),
+            "overall_score": (1-10),
+            "feedback": "brief explanation",
+            "improvements": "specific suggestions"
+        }}
+        """
+        
+        try:
+            response = model.generate_content(prompt)
+            analysis_result = eval(response.text)
+            normalized_score = self.normalize_score(analysis_result.get("overall_score", 0), self.current_round)
+            
+            return {
+                "clarity_score": analysis_result.get("clarity_score", 0),
+                "relevance_score": analysis_result.get("relevance_score", 0),
+                "grammar_score": analysis_result.get("grammar_score", 0),
+                "overall_score": normalized_score,
+                "feedback": analysis_result.get("feedback", "No feedback available"),
+                "improvements": analysis_result.get("improvements", "No suggestions available")
+            }
+        except Exception as e:
+            print(f"Error in analyze_response: {str(e)}")
+            return {
+                "clarity_score": 0,
+                "relevance_score": 0,
+                "grammar_score": 0,
+                "overall_score": 0,
+                "feedback": "Good work but need some minor improvements",
+                "improvements": "Unable to provide improvements"
+            }
+
+    def process_response(self, user_response, original_text):
+        if self.current_round == 1:  # Reading
+            similarity_ratio = SequenceMatcher(None, user_response.lower(), original_text.lower()).ratio()
+            normalized_score = self.normalize_score(similarity_ratio * 10, self.current_round)
+            analysis = {
+                "clarity_score": round(similarity_ratio * 10),
+                "relevance_score": 10 if similarity_ratio > 0.8 else 5,
+                "grammar_score": 10,
+                "overall_score": normalized_score,
+                "feedback": "Accurate reading" if similarity_ratio > 0.8 else "Need improvement in reading accuracy",
+                "improvements": "Try to read the text more precisely" if similarity_ratio < 0.8 else "Excellent reading!"
+            }
+        else:
+            analysis = self.analyze_response(
+                user_response,
+                ROUND_CONFIG[self.current_round]["name"]
+            )
+
+        self.round_results.append({
+            'original': original_text,
+            'response': user_response,
+            'analysis': analysis
+        })
+        
+        self.current_question += 1
+        if self.current_question >= len(self.selected_sentences):
+            self.complete_round()
+            return True
+        return False
+
+    def complete_round(self):
+        total_score = sum(result['analysis'].get('overall_score', 0) for result in self.round_results)
+        average_score = total_score / len(self.round_results) if self.round_results else 0
+        self.round_scores[self.current_round] = {
+            'name': ROUND_CONFIG[self.current_round]["name"],
+            'score': average_score,
+            'max_score': ROUND_CONFIG[self.current_round]["max_score"],
+            'results': self.round_results
+        }
+        self.total_score += average_score
+        
+        self.current_round += 1
+        if self.current_round <= 5:
+            self.initialize_round()
+
+    def get_final_report(self):
+        report = {
+            'total_score': round(self.total_score, 2),
+            'max_possible_score': 100,
+            'passed': self.total_score >= 80,
+            'detailed_feedback': []
+        }
+        
+        for round_num, round_data in self.round_scores.items():
+            round_feedback = {
+                'round': round_num,
+                'name': round_data['name'],
+                'score': round(round_data['score'], 2),
+                'max_score': round_data['max_score'],
+                'questions': []
+            }
+            
+            for result in round_data['results']:
+                round_feedback['questions'].append({
+                    'original': result['original'],
+                    'response': result['response'],
+                    'scores': {
+                        'clarity': result['analysis'].get('clarity_score', 0),
+                        'relevance': result['analysis'].get('relevance_score', 0),
+                        'grammar': result['analysis'].get('grammar_score', 0),
+                        'overall': round(result['analysis'].get('overall_score', 0), 2)
+                    },
+                    'feedback': result['analysis'].get('feedback', "No feedback available"),
+                    'improvements': result['analysis'].get('improvements', "No suggestions available")
+                })
+            
+            report['detailed_feedback'].append(round_feedback)
+        
+        return report
+
+# Initialize practice session
+practice_session = SpeechPractice()
+
+@app.route('/')
+def index():
+    return render_template('index.html', round_info=practice_session.current_round)
+
+@app.route('/current_question')
+def current_question():
+    if practice_session.current_round > 5:
+        return jsonify({
+            'complete': True,
+            'report': practice_session.get_final_report()
+        })
+    
+    current_item = practice_session.selected_sentences[practice_session.current_question]
+    
+    return jsonify({
+        'round': practice_session.current_round,
+        'question_number': practice_session.current_question + 1,
+        'total_questions': len(practice_session.selected_sentences),
+        'question': current_item,
+        'audio_required': practice_session.current_round > 1  # Only require audio for rounds 2-5
+    })
+
+@app.route('/submit_response', methods=['POST'])
+def submit_response():
+    data = request.get_json()
+    user_response = data.get('response')
+    original_text = data.get('original')
+    
+    round_complete = practice_session.process_response(user_response, original_text)
+    
+    return jsonify({
+        'success': True,
+        'round_complete': round_complete,
+        'next_round': practice_session.current_round if round_complete else None
+    })
+
+@app.route('/audio/<text>')
+def get_audio(text):
+    # Only provide audio for rounds 2-5
+    if practice_session.current_round > 1:
+        try:
+            tts = gtts.gTTS(text)
+            audio_fp = BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            return Response(audio_fp, mimetype='audio/mp3')
+        except Exception as e:
+            print(f"Error generating audio: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({'error': 'Audio not required for this round'}), 400
+
+if _name_ == '_main_':
+    app.run(debug=True)
